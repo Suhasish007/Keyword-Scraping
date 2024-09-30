@@ -1,0 +1,99 @@
+import logging
+import requests
+from bs4 import BeautifulSoup
+import csv
+import time
+from urllib.parse import urljoin
+
+# Set up logging
+log_file_path = '/path/to/your/log/file/general_scraper.log'  # Update this to a valid path
+logging.basicConfig(filename=log_file_path, level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def convert_to_int(value):
+    """Convert abbreviated number (e.g., '1.5K', '2M') to an integer."""
+    if 'M' in value:
+        return int(float(value.replace('M', '')) * 1_000_000)
+    elif 'K' in value:
+        return int(float(value.replace('K', '')) * 1_000)
+    else:
+        return int(value.replace(',', ''))
+
+def scrape_keyword_data(url, keyword):
+    """
+    Scrape a webpage for keyword-related information.
+
+    Args:
+        url (str): The URL of the webpage to scrape.
+        keyword (str): The keyword to look for on the webpage.
+
+    Returns:
+        str: The content related to the keyword or None if not found.
+    """
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Find meta tags or other relevant content related to the keyword
+            meta_tag = soup.find('meta', attrs={'name': keyword}) or soup.find('meta', attrs={'property': f'og:{keyword}'})
+            if meta_tag and meta_tag.get('content'):
+                return meta_tag['content']
+            
+            # Search for the keyword directly in the webpage content
+            page_text = soup.get_text()
+            if keyword.lower() in page_text.lower():
+                # Return some context around the keyword
+                start_index = page_text.lower().index(keyword.lower())
+                end_index = start_index + 100  # Provide some context after the keyword
+                return page_text[start_index:end_index]
+        else:
+            logging.error(f"Failed to access {url}: Status Code {response.status_code}")
+        return None
+    except Exception as e:
+        logging.error(f"Error while scraping {url} for keyword '{keyword}': {e}")
+        return None
+
+def collect_data(urls, keywords, filename="scraped_data.csv"):
+    """
+    Collect data from multiple URLs based on keywords.
+
+    Args:
+        urls (list): List of URLs to scrape.
+        keywords (list): List of keywords to search for in each URL.
+        filename (str): The CSV file to save the collected data.
+
+    Returns:
+        None
+    """
+    try:
+        with open(filename, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['Timestamp', 'URL', 'Keyword', 'Scraped_Content'])
+            
+            for url in urls:
+                for keyword in keywords:
+                    content = scrape_keyword_data(url, keyword)
+                    if content is not None:
+                        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+                        logging.info(f"Scraped data for {keyword} from {url}: {timestamp}")
+                        writer.writerow([timestamp, url, keyword, content])
+                    else:
+                        logging.warning(f"Keyword '{keyword}' not found on {url}.")
+    except Exception as e:
+        logging.error(f"Error during data collection: {e}")
+
+if __name__ == "__main__":
+    # List of URLs to scrape
+    urls = [
+        "https://example.com/blog1",
+        "https://example.com/blog2",
+        "https://example.com/page3"
+    ]
+    
+    # List of keywords to search for on each URL
+    keywords = [
+        "fashion", "technology", "innovation", "sustainability", "digital"
+    ]
+    
+    # Start collecting data
+    collect_data(urls, keywords)
